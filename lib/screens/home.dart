@@ -26,6 +26,7 @@ class HomeScreenState extends State<HomeScreen> {
   LoaderType loaderType = LoaderType.process;
   bool isSdkInitialized = true;
   String payload = "";
+  bool isIntentCalled = false;
 
   final log = Logger('HomeScreen');
 
@@ -57,7 +58,10 @@ class HomeScreenState extends State<HomeScreen> {
             appBar: buildAppBar(title: 'HyperSDK Integration'),
             body: SafeArea(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 30,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -73,7 +77,11 @@ class HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 20),
                     BottomButton(
                       label: isSdkInitialized ? 'Terminate' : 'Initiate',
-                      onPressed: () => isSdkInitialized ? callTerminate() : initiateHyperSDK(),
+                      onPressed:
+                          () =>
+                              isSdkInitialized
+                                  ? callTerminate()
+                                  : initiateHyperSDK(),
                     ),
                     const SizedBox(height: 30),
                     if (payload.isNotEmpty)
@@ -104,9 +112,7 @@ class HomeScreenState extends State<HomeScreen> {
         if (showLoader)
           Container(
             color: Colors.black.withOpacity(0.4),
-            child: const Center(
-              child: CircularProgressIndicator(),
-            ),
+            child: const Center(child: CircularProgressIndicator()),
           ),
       ],
     );
@@ -178,7 +184,11 @@ class HomeScreenState extends State<HomeScreen> {
             loaderType = LoaderType.none;
           });
         } catch (e) {
-          log.severe("Error decoding process_result: $e", e, StackTrace.current);
+          log.severe(
+            "Error decoding process_result: $e",
+            e,
+            StackTrace.current,
+          );
           setState(() => loaderType = LoaderType.none);
         }
         break;
@@ -187,22 +197,31 @@ class HomeScreenState extends State<HomeScreen> {
         try {
           final args = json.decode(methodCall.arguments);
           log.info("Process result: $args");
-          if (args['payload']['gatewayResponseCode'] == "00" && args['payload']['gatewayResponseMessage'] == "Your transaction is successful") {
-            await sendResultBackToCaller(json.encode({
+          if (args['payload']['gatewayResponseCode'] == "00" &&
+              args['payload']['gatewayResponseMessage'] ==
+                  "Your transaction is successful" &&
+              isIntentCalled) {
+            await sendResultBackToCaller(
+              json.encode({
                 'status': 'success',
                 'txnId': args['payload']['gatewayTransactionId'],
                 'message': 'Transaction completed',
-              }));
-          } else {
-            await sendResultBackToCaller(json.encode({
+              }),
+            );
+          } else if (isIntentCalled) {
+            await sendResultBackToCaller(
+              json.encode({
                 'status': 'failure',
                 'txnId': args['payload']['gatewayTransactionId'],
                 'message': 'Transaction failed',
-              }));
+              }),
+            );
           }
           setState(() {
             payload = const JsonEncoder.withIndent('  ').convert(args);
-            if (args['payload']['gatewayResponseCode'] == "00" && args['payload']['gatewayResponseMessage'] == "Your transaction is successful") {
+            if (args['payload']['gatewayResponseCode'] == "00" &&
+                args['payload']['gatewayResponseMessage'] ==
+                    "Your transaction is successful") {
               Fluttertoast.showToast(
                 msg: "Transaction Successful",
                 toastLength: Toast.LENGTH_SHORT,
@@ -211,7 +230,6 @@ class HomeScreenState extends State<HomeScreen> {
                 textColor: Colors.white,
                 fontSize: 16.0,
               );
-
             } else {
               Fluttertoast.showToast(
                 msg: "Transaction Failed/Pending",
@@ -221,12 +239,15 @@ class HomeScreenState extends State<HomeScreen> {
                 textColor: Colors.white,
                 fontSize: 16.0,
               );
-
             }
             loaderType = LoaderType.none;
           });
         } catch (e) {
-          log.severe("Error decoding process_result: $e", e, StackTrace.current);
+          log.severe(
+            "Error decoding process_result: $e",
+            e,
+            StackTrace.current,
+          );
           setState(() => loaderType = LoaderType.none);
         }
         break;
@@ -241,20 +262,19 @@ class HomeScreenState extends State<HomeScreen> {
     setState(() => loaderType = LoaderType.process);
     var initialLink = await initDeepLinkHandling();
     if (initialLink != null) {
+      isIntentCalled = true;
       callProcess(3, initialLink);
       return;
     }
     setState(() => loaderType = LoaderType.none);
   }
+
   Future<void> sendResultBackToCaller(String response) async {
     const platform = MethodChannel('com.rishabh.flutterproj/intent');
     try {
-      await platform.invokeMethod('sendResultBack', {
-        'response': response,
-      });
+      await platform.invokeMethod('sendResultBack', {'response': response});
     } on PlatformException catch (e) {
       print("Failed to send result: ${e.message}");
     }
   }
-
 }
