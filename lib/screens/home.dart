@@ -27,8 +27,12 @@ class HomeScreenState extends State<HomeScreen> {
   bool isSdkInitialized = true;
   String payload = "";
   bool isIntentCalled = false;
+  bool isPhoneValid = false;
 
   final log = Logger('HomeScreen');
+  final TextEditingController phoneController = TextEditingController();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  String phoneNumber = "";
 
   @override
   void initState() {
@@ -36,6 +40,11 @@ class HomeScreenState extends State<HomeScreen> {
     initiateHyperSDK();
     intentHandling();
     setupLogging();
+
+    phoneController.addListener(() {
+      final valid = RegExp(r'^91\d{10}$').hasMatch(phoneController.text);
+      setState(() => isPhoneValid = valid);
+    });
   }
 
   bool get showLoader => loaderType != LoaderType.none;
@@ -45,15 +54,7 @@ class HomeScreenState extends State<HomeScreen> {
     return Stack(
       children: [
         WillPopScope(
-          onWillPop: () async {
-            setState(() => loaderType = LoaderType.initiate);
-            if (Platform.isAndroid) {
-              var backpressResult = await widget.hyperSDK.onBackPress();
-              setState(() => loaderType = LoaderType.none);
-              return backpressResult.toLowerCase() != "true";
-            }
-            return true;
-          },
+          onWillPop: _handleBackPress,
           child: Scaffold(
             appBar: buildAppBar(title: 'HyperSDK Integration'),
             body: SafeArea(
@@ -62,48 +63,18 @@ class HomeScreenState extends State<HomeScreen> {
                   horizontal: 20,
                   vertical: 30,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    BottomButton(
-                      label: 'Call OnboardingAndPay',
-                      onPressed: () => callProcess(1, null),
-                    ),
-                    const SizedBox(height: 20),
-                    BottomButton(
-                      label: 'Call Management',
-                      onPressed: () => callProcess(2, null),
-                    ),
-                    const SizedBox(height: 20),
-                    BottomButton(
-                      label: isSdkInitialized ? 'Terminate' : 'Initiate',
-                      onPressed:
-                          () =>
-                              isSdkInitialized
-                                  ? callTerminate()
-                                  : initiateHyperSDK(),
-                    ),
-                    const SizedBox(height: 30),
-                    if (payload.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
-                          child: SelectableText(
-                            payload,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      buildPhoneInput(),
+                      const SizedBox(height: 30),
+                      ...buildBottomButtons(),
+                      const SizedBox(height: 30),
+                      if (payload.isNotEmpty) buildPayloadDisplay(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -115,6 +86,105 @@ class HomeScreenState extends State<HomeScreen> {
             child: const Center(child: CircularProgressIndicator()),
           ),
       ],
+    );
+  }
+
+  Widget buildPhoneInput() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Enter Phone Number (must start with 91)',
+          style: TextStyle(fontSize: 16),
+        ),
+        const SizedBox(height: 10),
+        TextFormField(
+          controller: phoneController,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: '91XXXXXXXXXX',
+            counterText: '',
+          ),
+          maxLength: 12,
+          validator: (value) {
+            if (value == null || value.isEmpty)
+              return 'Phone number is required';
+            if (!RegExp(r'^91\d{10}$').hasMatch(value)) {
+              return 'Enter valid 12-digit phone number starting with 91';
+            }
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+  List<Widget> buildBottomButtons() {
+    return [
+      BottomButton(
+        label: 'Call OnboardingAndPay',
+        onPressed: isPhoneValid ? () => handleProcessAction(1) : null,
+      ),
+      const SizedBox(height: 20),
+      BottomButton(
+        label: 'Call Management',
+        onPressed: isPhoneValid ? () => handleProcessAction(2) : null,
+      ),
+      const SizedBox(height: 20),
+      BottomButton(
+        label: isSdkInitialized ? 'Terminate' : 'Initiate',
+        onPressed:
+            isPhoneValid
+                ? () => isSdkInitialized ? callTerminate() : initiateHyperSDK()
+                : null,
+      ),
+    ];
+  }
+
+  Widget buildPayloadDisplay() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.vertical,
+        child: SelectableText(
+          payload,
+          style: const TextStyle(fontSize: 14, fontFamily: 'monospace'),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _handleBackPress() async {
+    setState(() => loaderType = LoaderType.initiate);
+    if (Platform.isAndroid) {
+      var result = await widget.hyperSDK.onBackPress();
+      setState(() => loaderType = LoaderType.none);
+      return result.toLowerCase() != "true";
+    }
+    return true;
+  }
+
+  void handleProcessAction(int action) {
+    if (_formKey.currentState?.validate() ?? false) {
+      phoneNumber = phoneController.text;
+      callProcess(action, null);
+    }
+  }
+
+  void showToast(String message, Color color) {
+    Fluttertoast.showToast(
+      msg: message,
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM,
+      backgroundColor: Colors.black87,
+      textColor: color,
+      fontSize: 16.0,
     );
   }
 
@@ -131,28 +201,25 @@ class HomeScreenState extends State<HomeScreen> {
       isSdkInitialized = true;
     });
     if (!await widget.hyperSDK.isInitialised()) {
-      final initiatePayload = await buildPayload(0, null);
-      log.info("Initiate payload: $initiatePayload");
-      await widget.hyperSDK.initiate(initiatePayload, hyperSDKCallbackHandler);
+      final payload = await buildPayload(0, null, phoneNumber);
+      log.info("Initiate payload: $payload");
+      await widget.hyperSDK.initiate(payload, hyperSDKCallbackHandler);
     }
   }
 
   void callProcess(int action, String? intentData) async {
     setState(() => loaderType = LoaderType.process);
     if (await widget.hyperSDK.isInitialised()) {
-      final processPayload = await buildPayload(action, intentData);
+      final processPayload = await buildPayload(
+        action,
+        intentData,
+        phoneNumber,
+      );
       await widget.hyperSDK.process(processPayload, hyperSDKCallbackHandler);
       log.info("Process called with payload: $processPayload");
     } else {
       setState(() => loaderType = LoaderType.none);
-      Fluttertoast.showToast(
-        msg: "SDK is not initialized",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.black87,
-        textColor: Colors.white,
-        fontSize: 16.0,
-      );
+      showToast("SDK is not initialized", Colors.white);
     }
   }
 
@@ -162,111 +229,85 @@ class HomeScreenState extends State<HomeScreen> {
       setState(() => isSdkInitialized = false);
       log.info("HyperSDK terminated");
     } else {
-      Fluttertoast.showToast(
-        msg: "SDK is not initialized",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.black87,
-        textColor: Colors.white,
-        fontSize: 16.0,
-      );
-    }
-  }
-
-  void hyperSDKCallbackHandler(MethodCall methodCall) async {
-    switch (methodCall.method) {
-      case "initiate_result":
-        try {
-          final args = json.decode(methodCall.arguments);
-          log.info("Initiate result: $args");
-          setState(() {
-            payload = const JsonEncoder.withIndent('  ').convert(args);
-            loaderType = LoaderType.none;
-          });
-        } catch (e) {
-          log.severe(
-            "Error decoding process_result: $e",
-            e,
-            StackTrace.current,
-          );
-          setState(() => loaderType = LoaderType.none);
-        }
-        break;
-
-      case "process_result":
-        try {
-          final args = json.decode(methodCall.arguments);
-          log.info("Process result: $args");
-          if (args['payload']['gatewayResponseCode'] == "00" &&
-              args['payload']['gatewayResponseMessage'] ==
-                  "Your transaction is successful" &&
-              isIntentCalled) {
-            await sendResultBackToCaller(
-              json.encode({
-                'status': 'success',
-                'txnId': args['payload']['gatewayTransactionId'],
-                'message': 'Transaction completed',
-              }),
-            );
-          } else if (isIntentCalled) {
-            await sendResultBackToCaller(
-              json.encode({
-                'status': 'failure',
-                'txnId': args['payload']['gatewayTransactionId'],
-                'message': 'Transaction failed',
-              }),
-            );
-          }
-          setState(() {
-            payload = const JsonEncoder.withIndent('  ').convert(args);
-            if (args['payload']['gatewayResponseCode'] == "00" &&
-                args['payload']['gatewayResponseMessage'] ==
-                    "Your transaction is successful") {
-              Fluttertoast.showToast(
-                msg: "Transaction Successful",
-                toastLength: Toast.LENGTH_SHORT,
-                gravity: ToastGravity.BOTTOM,
-                backgroundColor: Colors.green,
-                textColor: Colors.white,
-                fontSize: 16.0,
-              );
-            } else {
-              Fluttertoast.showToast(
-                msg: "Transaction Failed/Pending",
-                toastLength: Toast.LENGTH_SHORT,
-                gravity: ToastGravity.BOTTOM,
-                backgroundColor: Colors.red,
-                textColor: Colors.white,
-                fontSize: 16.0,
-              );
-            }
-            loaderType = LoaderType.none;
-          });
-        } catch (e) {
-          log.severe(
-            "Error decoding process_result: $e",
-            e,
-            StackTrace.current,
-          );
-          setState(() => loaderType = LoaderType.none);
-        }
-        break;
-
-      default:
-        log.warning("Unhandled method: ${methodCall.method}");
-        break;
+      showToast("SDK is not initialized", Colors.red);
     }
   }
 
   void intentHandling() async {
     setState(() => loaderType = LoaderType.process);
-    var initialLink = await initDeepLinkHandling();
-    if (initialLink != null) {
+    var link = await initDeepLinkHandling();
+    if (link != null) {
       isIntentCalled = true;
-      callProcess(3, initialLink);
+      callProcess(3, link);
       return;
     }
     setState(() => loaderType = LoaderType.none);
+  }
+
+  void hyperSDKCallbackHandler(MethodCall methodCall) async {
+    switch (methodCall.method) {
+      case "initiate_result":
+      case "process_result":
+        _handleSdkResult(methodCall);
+        break;
+      default:
+        log.warning("Unhandled method: ${methodCall.method}");
+    }
+  }
+
+  void _handleSdkResult(MethodCall methodCall) async {
+    try {
+      final args = json.decode(methodCall.arguments);
+      final formatted = const JsonEncoder.withIndent('  ').convert(args);
+      log.info("${methodCall.method}: $args");
+
+      if (methodCall.method == "process_result") {
+        final action = args['payload']['action'];
+        final payload = args['payload'];
+        final success =
+            (payload['gatewayResponseCode'] == "00" &&
+                payload['gatewayResponseMessage'] ==
+                    "Your transaction is successful") ||
+            (action == "management");
+
+        if (isIntentCalled) {
+          await sendResultBackToCaller(
+            json.encode({
+              'status': success ? 'success' : 'failure',
+              'txnId': payload['gatewayTransactionId'],
+              'message':
+                  success ? 'Transaction completed' : 'Transaction failed',
+            }),
+          );
+        }
+
+        Fluttertoast.showToast(
+          msg:
+              success
+                  ? action == "management"
+                      ? "Oye Balle Balle"
+                      : "Transaction Successful"
+                  : "Transaction Failed/Pending",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: success ? Colors.green : Colors.red,
+          textColor: Colors.white,
+          fontSize: 16.0,
+        );
+      }
+
+      setState(() {
+        payload = formatted;
+        loaderType = LoaderType.none;
+      });
+    } catch (e) {
+      log.severe(
+        "Error decoding ${methodCall.method}: $e",
+        e,
+        StackTrace.current,
+      );
+      setState(() => loaderType = LoaderType.none);
+    }
   }
 
   Future<void> sendResultBackToCaller(String response) async {

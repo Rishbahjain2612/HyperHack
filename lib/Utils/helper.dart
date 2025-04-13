@@ -16,13 +16,15 @@ Future<String> loadPrivateKey() async {
 }
 
 /// Build initiate payload
-Future<Map<String, dynamic>> buildInitPayload() async {
+Future<Map<String, dynamic>> buildInitPayload(
+  String customerMobileNumber,
+) async {
   const clientId = "testhyperupi";
   const environment = "sandbox";
   const logLevel = 1;
 
   final signaturePayload = {
-    "merchantCustomerId": "abcde",
+    "merchantCustomerId": customerMobileNumber,
     "timestamp": (DateTime.now().millisecondsSinceEpoch).toString(),
     "merchantId": "HYPERUPITEST",
     "merchantChannelId": "HYPERUPITESTAPP",
@@ -43,45 +45,47 @@ Future<Map<String, dynamic>> buildInitPayload() async {
     "signature": signature,
     "signaturePayload": signaturePayloadNew,
     "environment": environment,
-    "logLevel": logLevel
+    "logLevel": logLevel,
   };
 }
 
 /// Build process payload
-Future<Map<String, dynamic>> buildProcessPayload(String action, String? intentData) async {
-
-  const customerMobileNumber = "917017946155";
+Future<Map<String, dynamic>> buildProcessPayload(
+  String action,
+  String? intentData,
+  String phoneNumber,
+) async {
+  var customerMobileNumber = phoneNumber;
   String merchantRequestId = generateYJPString();
 
   Map<String, dynamic> signaturePayload = {
-    "merchantCustomerId": "abcde",
+    "merchantCustomerId": customerMobileNumber,
     "timestamp": (DateTime.now().millisecondsSinceEpoch).toString(),
     "merchantId": "HYPERUPITEST",
-    "merchantChannelId": "HYPERUPITESTAPP"
+    "merchantChannelId": "HYPERUPITESTAPP",
   };
 
   Map<String, dynamic> processPayload = {
     "action": action,
     "customerMobileNumber": customerMobileNumber,
     "showStatusScreen": true,
-    "udfParameters": "{}"
+    "udfParameters": "{}",
   };
 
-  switch (action){
+  switch (action) {
     case "onboardingAndPay":
-      signaturePayload = signaturePayload ..addAll({
-        "amount": "50.00",
-        "merchantVpa": "hyperupitest@ypay",
-        "merchantRequestId": merchantRequestId
-      });
+      signaturePayload =
+          signaturePayload..addAll({
+            "amount": "50.00",
+            "merchantVpa": "hyperupitest@ypay",
+            "merchantRequestId": merchantRequestId,
+          });
       break;
     case "management":
       break;
     case "incomingIntent":
       if (intentData != null) {
-        processPayload = processPayload ..addAll({
-          "intentData": intentData,
-        });
+        processPayload = processPayload..addAll({"intentData": intentData});
       } else {
         throw Exception("Intent data is null");
       }
@@ -95,41 +99,55 @@ Future<Map<String, dynamic>> buildProcessPayload(String action, String? intentDa
   final signature = jsonDecode(base64Values)['signature'];
   final signaturePayloadNew = jsonDecode(base64Values)['signaturePayload'];
 
-
-  return processPayload ..addAll({
+  return processPayload..addAll({
     "protected": protected,
     "signature": signature,
-    "signaturePayload": signaturePayloadNew
+    "signaturePayload": signaturePayloadNew,
   });
 }
 
-Future<Map<String, dynamic>> buildPayload(int payloadType, String? intentData) async {
+Future<Map<String, dynamic>> buildPayload(
+  int payloadType,
+  String? intentData,
+  String phoneNumber,
+) async {
   final requestId = const Uuid().v4();
   const service = "in.juspay.hyperapi";
 
-  Map<String, dynamic> payload; // Declare the payload as Map<String, dynamic> instead of Future<Map<String, dynamic>>.
+  Map<String, dynamic>
+  payload; // Declare the payload as Map<String, dynamic> instead of Future<Map<String, dynamic>>.
 
   switch (payloadType) {
     case 0:
-      payload = await buildInitPayload(); // Await the result of buildInitPayload.
+      payload = await buildInitPayload(
+        phoneNumber,
+      ); // Await the result of buildInitPayload.
       break;
     case 1:
-      payload = await buildProcessPayload("onboardingAndPay", null); // Await the result of buildProcessPayload.
+      payload = await buildProcessPayload(
+        "onboardingAndPay",
+        null,
+        phoneNumber,
+      ); // Await the result of buildProcessPayload.
       break;
     case 2:
-      payload = await buildProcessPayload("management", null); // Await the result of buildProcessPayload.
+      payload = await buildProcessPayload(
+        "management",
+        null,
+        phoneNumber,
+      ); // Await the result of buildProcessPayload.
       break;
     case 3:
-      payload = await buildProcessPayload("incomingIntent", intentData);
+      payload = await buildProcessPayload(
+        "incomingIntent",
+        intentData,
+        phoneNumber,
+      );
       break;
     default:
       throw Exception("Invalid payload type");
   }
 
   // Return the final map with the payload.
-  return {
-    "requestId": requestId,
-    "service": service,
-    "payload": payload
-  };
+  return {"requestId": requestId, "service": service, "payload": payload};
 }
