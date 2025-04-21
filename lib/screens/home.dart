@@ -272,7 +272,8 @@ class HomeScreenState extends State<HomeScreen> {
 
   void hyperSDKCallbackHandler(MethodCall methodCall) async {
     switch (methodCall.method) {
-      case "initiate_result":
+      case "session_expired":
+        callProcess(4, null);
       case "process_result":
         _handleSdkResult(methodCall);
         break;

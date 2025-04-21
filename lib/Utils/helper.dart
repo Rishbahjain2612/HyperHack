@@ -90,6 +90,9 @@ Future<Map<String, dynamic>> buildProcessPayload(
         throw Exception("Intent data is null");
       }
       break;
+    case "updateAuth":
+      processPayload = processPayload.remove(customerMobileNumber);
+      break;
     default:
       throw Exception("Invalid action");
   }
@@ -143,6 +146,9 @@ Future<Map<String, dynamic>> buildPayload(
         intentData,
         phoneNumber,
       );
+      break;
+    case 4:
+      payload = await buildProcessPayload("updateAuth", null, phoneNumber);
       break;
     default:
       throw Exception("Invalid payload type");
