@@ -44,6 +44,7 @@ dependencies:
   dart_jsonwebtoken: ^2.0.1
   pointycastle: ^3.6.2
   basic_utils: ^5.6.1
+  shared_preferences: ^2.2.2
 
 
 dev_dependencies:

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutterproj/Utils/handle_intent.dart';
 import 'package:hypersdkflutter/hypersdkflutter.dart';
 import 'package:logging/logging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../Utils/helper.dart';
 import '../widgets/bottom_button.dart';
 import '../widgets/app_bar.dart';
@@ -40,11 +41,33 @@ class HomeScreenState extends State<HomeScreen> {
     initiateHyperSDK();
     intentHandling();
     setupLogging();
+    loadCachedPhoneNumber();
 
     phoneController.addListener(() {
       final valid = RegExp(r'^91\d{10}$').hasMatch(phoneController.text);
       setState(() => isPhoneValid = valid);
     });
+  }
+
+  Future<void> loadCachedPhoneNumber() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedPhone = prefs.getString('cachedPhone');
+
+    if (cachedPhone != null && cachedPhone.isNotEmpty) {
+      phoneController.text = cachedPhone;
+      phoneNumber = cachedPhone;
+    } else {
+      const defaultPhone = '911234567890';
+      phoneController.text = defaultPhone;
+      phoneNumber = defaultPhone;
+    }
+
+    isPhoneValid = RegExp(r'^91\d{10}$').hasMatch(phoneController.text);
+  }
+
+  Future<void> savePhoneNumber(String number) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('cachedPhone', number);
   }
 
   bool get showLoader => loaderType != LoaderType.none;
@@ -103,13 +126,12 @@ class HomeScreenState extends State<HomeScreen> {
           keyboardType: TextInputType.phone,
           decoration: const InputDecoration(
             border: OutlineInputBorder(),
-            hintText: '91XXXXXXXXXX',
+            hintText: 'Default : 911234567890',
             counterText: '',
           ),
           maxLength: 12,
           validator: (value) {
-            if (value == null || value.isEmpty)
-              return 'Phone number is required';
+            if (value == null || value.isEmpty) return null;
             if (!RegExp(r'^91\d{10}$').hasMatch(value)) {
               return 'Enter valid 12-digit phone number starting with 91';
             }
@@ -124,20 +146,18 @@ class HomeScreenState extends State<HomeScreen> {
     return [
       BottomButton(
         label: 'Call OnboardingAndPay',
-        onPressed: isPhoneValid ? () => handleProcessAction(1) : null,
+        onPressed: () => handleProcessAction(1),
       ),
       const SizedBox(height: 20),
       BottomButton(
         label: 'Call Management',
-        onPressed: isPhoneValid ? () => handleProcessAction(2) : null,
+        onPressed: () => handleProcessAction(2),
       ),
       const SizedBox(height: 20),
       BottomButton(
         label: isSdkInitialized ? 'Terminate' : 'Initiate',
         onPressed:
-            isPhoneValid
-                ? () => isSdkInitialized ? callTerminate() : initiateHyperSDK()
-                : null,
+            () => isSdkInitialized ? callTerminate() : initiateHyperSDK(),
       ),
     ];
   }
@@ -171,9 +191,15 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   void handleProcessAction(int action) {
-    if (_formKey.currentState?.validate() ?? false) {
-      phoneNumber = phoneController.text;
+    final input = phoneController.text.trim();
+    if (input.isEmpty && phoneNumber.isNotEmpty) {
       callProcess(action, null);
+    } else if (RegExp(r'^91\d{10}$').hasMatch(input)) {
+      phoneNumber = input;
+      savePhoneNumber(phoneNumber);
+      callProcess(action, null);
+    } else {
+      showToast("Enter valid phone number starting with 91", Colors.red);
     }
   }
 
